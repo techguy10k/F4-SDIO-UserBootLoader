@@ -1,0 +1,5 @@
+*.PDF
+SDIO+IAP/Drivers
+*.Admin
+SDIO+IAP/MDK-ARM/JLinkLog.txt
+SDIO+IAP/MDK-ARM/SDIO+IAP
