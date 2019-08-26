@@ -3,3 +3,5 @@ SDIO+IAP/Drivers
 *.Admin
 SDIO+IAP/MDK-ARM/JLinkLog.txt
 SDIO+IAP/MDK-ARM/SDIO+IAP
+SDIO+IAP/HC-USB-P.exe
+SDIO+IAP/Middlewares
