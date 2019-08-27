@@ -15,7 +15,9 @@ uint8_t ReadBufferS[10] = {0};
 uint8_t ReadBufferSS[10] = {0};
 uint8_t ReadBufferDir[20] = {0};
 uint32_t ReadOutCount = 0;
-DIR DIR_TEMP;
+
+//FLASH测试头文件
+
 
 //printf串口需要的头文件
 #include "usart.h"
@@ -84,7 +86,41 @@ void User_main(void)
 		f_close(&SDFile);
 		f_getcwd((TCHAR*)ReadBufferDir,20);
 		printf("Current Dir %s\r\n",ReadBufferDir);
+		
+		
+		/* FLASH访问测试 */
+		uint8_t Data = 0;
+		
+		for(uint32_t counter = 0x8000000;counter < (0x8000000 + 10);counter ++)
+		{
+			Data = *((uint8_t*)(counter));
+			printf("%02X ",(unsigned int)Data);
+			HAL_Delay(50);
+		}
+		printf("\r\n");
+		/* FLASH写读测试 */
+		Data = *((uint8_t*)(0x800C000));
+		printf("FlashRead %d\r\n",Data);
+		
+		uint32_t tick = HAL_GetTick();
+		HAL_FLASH_Unlock();
+		//先擦除才能写
+		FLASH_Erase_Sector(3,FLASH_VOLTAGE_RANGE_3);
+		//先清除错误标志位再进行flash写操作 否则报错
+		__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR); 
+		HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE,0x800C000,0xA5);
+		HAL_FLASH_GetError();
+		tick = HAL_GetTick() - tick;
+		printf("time %d\r\n",tick);
+		HAL_FLASH_Lock();
+		
+		Data = *((uint8_t*)(0x800C000));
+		printf("FlashRead %d\r\n",Data);
 		/* 测试结束 */
+		
+		
+		
+		
 		f_close(&SDFile);
 		HAL_Delay(50);
 		printf("System halted.\r\n");
