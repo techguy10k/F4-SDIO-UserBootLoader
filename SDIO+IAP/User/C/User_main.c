@@ -21,14 +21,34 @@ uint16_t SdVersion = 0;
 //还没有封装的函数
 uint8_t IAP_FlashErase_APP(uint32_t ImageSize);
 uint8_t IAP_FlashProgram(FIL* file);
-void IAP_Jump2App(uint32_t AppFlashBase,uint32_t MSP_Addr);
+void IAP_Jump2App(uint32_t AppFlashBase);
 
 void User_main(void)
 {
 	
 	while(1)
 	{
+		HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,GPIO_PIN_RESET);
 		HAL_Delay(50); //等待系统稳定 不一定需要
+		
+		if(__SystemInfo_Header != 0x5AA5)
+		{
+			printf("Incorrect SystemInfo Header.\r\nSector 3 Will be format.\r\n");
+			HAL_Delay(50);
+			printf("Will lost all SystemInfo.\r\n");
+			HAL_Delay(50);
+			
+			HAL_FLASH_Unlock();
+			FLASH_Erase_Sector(3,FLASH_VOLTAGE_RANGE_3);			
+			//写Header 供下次识别
+		  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR); 
+		  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,__SystemInfoAddr + 0,0x5AA5);
+			//重置默认版本
+		  __HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR); 
+		  HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,__SystemInfoAddr + 2,0x0000);
+			HAL_FLASH_Lock();
+		}
+		
 		
 		//如果不能mountSD卡 则报错
 		if(f_mount(&SDFatFS,(const TCHAR*)SDPath,1) != FR_OK)
@@ -50,7 +70,8 @@ void User_main(void)
 		if(f_stat("update.bin",NULL) != FR_OK)
 		{
 			printf("No update.bin Found,Jump to User Application\r\n");
-			IAP_Jump2App(0x08010000,0x00);
+			HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,GPIO_PIN_SET);
+			IAP_Jump2App(0x08010000);
 		}
 		else if(f_stat("update.bin",NULL) == FR_OK)
 		{
@@ -65,106 +86,47 @@ void User_main(void)
 				f_close(&SDFile);
 				printf("SdCard Version %d\r\n",SdVersion);
 				HAL_Delay(50);
-				printf("Flash  Version %d\r\n",*((uint16_t*)(0x800C000)));
+				printf("Flash  Version %d\r\n",__SystemInfo_FlashVersion);
 				
 				//版本判断 此if语句前一个参数为flash版本 稍后会替换为结构体
-				if(*((uint16_t*)(0x800C000)) > SdVersion)
+				if(__SystemInfo_FlashVersion >= SdVersion)
 				{
-					printf("Flash version is newer than SdCard vertion\r\nUpdate Cancel\r\n");
+					printf("Update Cancel\r\n");
 					HAL_Delay(50);
 					printf("Jump to User APP.\r\n");
+					HAL_Delay(50);
+					HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,GPIO_PIN_SET);
+					IAP_Jump2App(0x08010000);
 				}
 				else
 				{
 					printf("Updating...\r\n");
+					
+					//重写版本信息
+					HAL_FLASH_Unlock();
+					FLASH_Erase_Sector(3,FLASH_VOLTAGE_RANGE_3);			
+					//写Header 供下次识别
+					__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR); 
+					HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,__SystemInfoAddr + 0,0x5AA5);
+					//重置默认版本
+					__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR); 
+					HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,__SystemInfoAddr + 2,SdVersion);
+					HAL_FLASH_Lock();
 					HAL_Delay(50);
+					
 					f_open(&SDFile,"update.bin",FA_READ);
 					//获取文件大小 根据文件大小擦除flash 如果文件过大则发出警告 在IAP_FlashErase()中实现
 				  printf("IAP_Erase ERR Code %d\r\n",IAP_FlashErase_APP(f_size(&SDFile)));
 					printf("IAP_Program ERR Code %d\r\n",IAP_FlashProgram(&SDFile));
 					f_close(&SDFile);
-					IAP_Jump2App(0x08010000,0x00);
+					printf("Jump to User App.\r\n");
+					HAL_Delay(50);
+					HAL_GPIO_WritePin(LED_GPIO_Port,LED_Pin,GPIO_PIN_SET);
+					IAP_Jump2App(0x08010000);
 				}
 				
 			}				
 		}
-
-
-//    //Debug Code 确认 0x800C000 存的是2010
-//		HAL_Delay(50);
-//		printf("Flash Read %d \r\n",*((uint16_t*)(0x800C000)));
-//		HAL_Delay(50);
-
-
-//		//Debug Code
-//		f_mount(&SDFatFS,(const TCHAR*)SDPath,1);
-//		f_chdir("dload");
-//		//创建update.bin 写入Fcuk You
-//		f_open(&SDFile,"update.bin",FA_CREATE_ALWAYS | FA_READ | FA_WRITE);
-//		f_lseek(&SDFile,0);
-//		f_printf(&SDFile,"Fuck You\r\n");
-//		f_truncate(&SDFile);
-//		f_sync(&SDFile);
-//		f_lseek(&SDFile,0);
-//		f_gets((TCHAR*)String,20,&SDFile);
-//		printf("%s",String);
-//		f_close(&SDFile);
-//		HAL_Delay(50);
-//		//给version.txt写入版本信息进行测试
-//		f_open(&SDFile,"version.txt",FA_CREATE_ALWAYS | FA_READ | FA_WRITE);
-//		f_lseek(&SDFile,0);
-//		f_printf(&SDFile,"2011\r\n");
-//		f_truncate(&SDFile);
-//		f_sync(&SDFile);
-//		f_lseek(&SDFile,0);
-//		f_gets((TCHAR*)String,20,&SDFile);
-//		printf("%s",String);
-//		f_close(&SDFile);
-//		HAL_Delay(50);
-//		//给Flash 0x800C000(sector3 16KB) 地址写入信息方便版本控制比较
-//		HAL_FLASH_Unlock();
-//		//先擦除才能写
-//		FLASH_Erase_Sector(3,FLASH_VOLTAGE_RANGE_3);
-//		//先清除错误标志位再进行flash写操作 否则报错
-//		__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR); 
-//		HAL_FLASH_Program(FLASH_TYPEPROGRAM_HALFWORD,0x800C000,2010);
-//		printf("Flash Read %d\r\n",*((uint16_t*)(0x800C000)));
-//		HAL_FLASH_Lock();
-		
-		
-		
-//		/* FLASH访问测试 */
-//		uint8_t Data = 0;
-//		
-//		for(uint32_t counter = 0x8000000;counter < (0x8000000 + 10);counter ++)
-//		{
-//			Data = *((uint8_t*)(counter));
-//			printf("%02X ",(unsigned int)Data);
-//			HAL_Delay(50);
-//		}
-//		printf("\r\n");
-//		/* FLASH写读测试 */
-//		Data = *((uint8_t*)(0x800C000));
-//		printf("FlashRead %d\r\n",Data);
-//		
-//		uint32_t tick = HAL_GetTick();
-//		HAL_FLASH_Unlock();
-//		//先擦除才能写
-//		FLASH_Erase_Sector(3,FLASH_VOLTAGE_RANGE_3);
-//		//先清除错误标志位再进行flash写操作 否则报错
-//		__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_PGPERR | FLASH_FLAG_PGSERR); 
-//		HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE,0x800C000,0xA5);
-//		HAL_FLASH_GetError();
-//		tick = HAL_GetTick() - tick;
-//		printf("time %d\r\n",tick);
-//		HAL_FLASH_Lock();
-//		
-//		Data = *((uint8_t*)(0x800C000));
-//		printf("FlashRead %d\r\n",Data);
-//		/* 测试结束 */
-		
-		
-		
 		
 		f_close(&SDFile);
 		HAL_Delay(50);
@@ -282,13 +244,11 @@ uint8_t IAP_FlashProgram(FIL* file)
 }
 
 
-void IAP_Jump2App(uint32_t AppFlashBase,uint32_t MSP_Addr)
+void IAP_Jump2App(uint32_t AppFlashBase)
 {
 	uint32_t JumpAddr = 0;
 	void (*pFun)(void); //定义一个函数指针.用于指向APP程序入口
 	
-	//目前设置MSP暂时没有用 默认内部SRAM默认地址为堆栈
-	MSP_Addr = 0;
 	
 	//APP程序要跳转到复位向量 也就是App基地址+4的地址
 	JumpAddr = *(uint32_t *)( AppFlashBase + 4);
@@ -303,6 +263,8 @@ void IAP_Jump2App(uint32_t AppFlashBase,uint32_t MSP_Addr)
 	(*pFun)();
 	
 }
+
+
 
 #ifdef __GNUC__
 #define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
