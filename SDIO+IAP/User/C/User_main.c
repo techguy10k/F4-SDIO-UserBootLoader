@@ -87,11 +87,12 @@ void User_main(void)
 				printf("SdCard Version %d\r\n",SdVersion);
 				HAL_Delay(50);
 				printf("Flash  Version %d\r\n",__SystemInfo_FlashVersion);
+				HAL_Delay(50);
 				
 				//版本判断 此if语句前一个参数为flash版本 稍后会替换为结构体
 				if(__SystemInfo_FlashVersion >= SdVersion)
 				{
-					printf("Update Cancel\r\n");
+					printf("Update Abort.\r\n");
 					HAL_Delay(50);
 					printf("Jump to User APP.\r\n");
 					HAL_Delay(50);
